@@ -21,6 +21,8 @@ Maintainer: Sylvain Miermont
 /* -------------------------------------------------------------------------- */
 /* --- DEPENDANCIES --------------------------------------------------------- */
 
+#include <sys/types.h>
+#include <linux/limits.h>
 #include <stdint.h>		/* C99 types */
 #include <stdio.h>		/* printf fprintf */
 #include <stdlib.h>		/* malloc free */
@@ -61,10 +63,10 @@ Maintainer: Sylvain Miermont
 int lgw_spi_open(void **spi_target_ptr) {
 	struct mpsse_context *mpsse = NULL;
 	int a, b;
-	
+
 	/* check input variables */
 	CHECK_NULL(spi_target_ptr); /* cannot be null, must point on a void pointer (*spi_target_ptr can be null) */
-	
+
 	/* try to open the first available FTDI device matching VID/PID parameters */
 	mpsse = OpenIndex(VID,PID,SPI0, SIX_MHZ, MSB, IFACE_A, NULL, NULL, 0);
 	if (mpsse == NULL) {
@@ -75,7 +77,7 @@ int lgw_spi_open(void **spi_target_ptr) {
 		DEBUG_MSG("ERROR: MPSSE OPEN FUNCTION FAILED\n");
 		return LGW_SPI_ERROR;
 	}
-	
+
 	/* toggle pin ADBUS5 of the FT232H */
 	/* On the MTAC-LORA, it resets the SX1301 */
 	a = PinLow(mpsse, GPIOL1);
@@ -84,7 +86,7 @@ int lgw_spi_open(void **spi_target_ptr) {
 		DEBUG_MSG("ERROR: IMPOSSIBLE TO TOGGLE GPIOL1/ADBUS5\n");
 		return LGW_SPI_ERROR;
 	}
-	
+
 	DEBUG_PRINTF("SPI port opened and configured ok\ndesc: %s\nPID: 0x%04X\nVID: 0x%04X\nclock: %d\nLibmpsse version: 0x%02X\n", GetDescription(mpsse), GetPid(mpsse), GetVid(mpsse), GetClock(mpsse), Version());
 	*spi_target_ptr = (void *)mpsse;
 	return LGW_SPI_SUCCESS;
@@ -95,12 +97,12 @@ int lgw_spi_open(void **spi_target_ptr) {
 /* SPI release */
 int lgw_spi_close(void *spi_target) {
 	struct mpsse_context *mpsse = spi_target;
-	
+
 	/* check input variables */
 	CHECK_NULL(spi_target);
-	
+
 	Close(mpsse);
-	
+
 	/* close return no status, assume success (0_o) */
 	return LGW_SPI_SUCCESS;
 }
@@ -113,22 +115,22 @@ int lgw_spi_w(void *spi_target, uint8_t address, uint8_t data) {
 	struct mpsse_context *mpsse = spi_target;
 	uint8_t out_buf[2];
 	int a, b, c;
-	
+
 	/* check input variables */
 	CHECK_NULL(spi_target);
 	if ((address & 0x80) != 0) {
 		DEBUG_MSG("WARNING: SPI address > 127\n");
 	}
-	
+
 	/* prepare frame to be sent */
 	out_buf[0] = WRITE_ACCESS | (address & 0x7F);
 	out_buf[1] = data;
-	
+
 	/* MPSSE transaction */
 	a = Start(mpsse);
 	b = FastWrite(mpsse, (char *)out_buf, 2);
 	c = Stop(mpsse);
-	
+
 	/* determine return code */
 	if ((a != MPSSE_OK) || (b != MPSSE_OK) || (c != MPSSE_OK)) {
 		DEBUG_MSG("ERROR: SPI WRITE FAILURE\n");
@@ -148,23 +150,23 @@ int lgw_spi_r(void *spi_target, uint8_t address, uint8_t *data) {
 	uint8_t out_buf[2];
 	uint8_t *in_buf = NULL;
 	int a, b;
-	
+
 	/* check input variables */
 	CHECK_NULL(spi_target);
 	if ((address & 0x80) != 0) {
 		DEBUG_MSG("WARNING: SPI address > 127\n");
 	}
 	CHECK_NULL(data);
-	
+
 	/* prepare frame to be sent */
 	out_buf[0] = READ_ACCESS | (address & 0x7F);
 	out_buf[1] = 0x00;
-	
+
 	/* MPSSE transaction */
 	a = Start(mpsse);
 	in_buf = (uint8_t *)Transfer(mpsse, (char *)out_buf, 2);
 	b = Stop(mpsse);
-	
+
 	/* determine return code */
 	if ((in_buf == NULL) || (a != MPSSE_OK) || (b != MPSSE_OK)) {
 		DEBUG_MSG("ERROR: SPI READ FAILURE\n");
@@ -192,7 +194,7 @@ int lgw_spi_wb(void *spi_target, uint8_t address, uint8_t *data, uint16_t size) 
 	int size_to_do, buf_size, chunk_size, offset;
 	int a=0, b=0, c=0;
 	int i;
-	
+
 	/* check input parameters */
 	CHECK_NULL(spi_target);
 	if ((address & 0x80) != 0) {
@@ -203,11 +205,11 @@ int lgw_spi_wb(void *spi_target, uint8_t address, uint8_t *data, uint16_t size) 
 		DEBUG_MSG("ERROR: BURST OF NULL LENGTH\n");
 		return LGW_SPI_ERROR;
 	}
-	
+
 	/* prepare command byte */
 	command = WRITE_ACCESS | (address & 0x7F);
 	size_to_do = size + 1; /* add a byte for the address */
-	
+
 	/* allocate data buffer */
 	buf_size = (size_to_do < LGW_BURST_CHUNK) ? size_to_do : LGW_BURST_CHUNK;
 	out_buf = malloc(buf_size);
@@ -215,7 +217,7 @@ int lgw_spi_wb(void *spi_target, uint8_t address, uint8_t *data, uint16_t size) 
 		DEBUG_MSG("ERROR: MALLOC FAIL\n");
 		return LGW_SPI_ERROR;
 	}
-	
+
 	/* start MPSSE transaction */
 	a = Start(mpsse);
 	for (i=0; size_to_do > 0; ++i) {
@@ -233,10 +235,10 @@ int lgw_spi_wb(void *spi_target, uint8_t address, uint8_t *data, uint16_t size) 
 		size_to_do -= chunk_size; /* subtract the quantity of data already transferred */
 	}
 	c = Stop(mpsse);
-	
+
 	/* deallocate data buffer */
 	free(out_buf);
-	
+
 	/* determine return code (only the last FastWrite is checked) */
 	if ((a != MPSSE_OK) || (b != MPSSE_OK) || (c != MPSSE_OK)) {
 		DEBUG_MSG("ERROR: SPI BURST WRITE FAILURE\n");
@@ -258,7 +260,7 @@ int lgw_spi_rb(void *spi_target, uint8_t address, uint8_t *data, uint16_t size) 
 	int size_to_do, chunk_size, offset;
 	int a=0, b=0, c=0, d=0;
 	int i;
-	
+
 	/* check input parameters */
 	CHECK_NULL(spi_target);
 	if ((address & 0x80) != 0) {
@@ -269,11 +271,11 @@ int lgw_spi_rb(void *spi_target, uint8_t address, uint8_t *data, uint16_t size) 
 		DEBUG_MSG("ERROR: BURST OF NULL LENGTH\n");
 		return LGW_SPI_ERROR;
 	}
-	
+
 	/* prepare command byte */
 	command = READ_ACCESS | (address & 0x7F);
 	size_to_do = size;
-	
+
 	/* start MPSSE transaction */
 	a = Start(mpsse);
 	b = FastWrite(mpsse, (char *)&command, 1);
@@ -284,7 +286,7 @@ int lgw_spi_rb(void *spi_target, uint8_t address, uint8_t *data, uint16_t size) 
 		size_to_do -= chunk_size; /* subtract the quantity of data already transferred */
 	}
 	d = Stop(mpsse);
-	
+
 	/* determine return code (only the last FastRead is checked) */
 	if ((a != MPSSE_OK) || (b != MPSSE_OK) || (c != MPSSE_OK) || (d != MPSSE_OK)) {
 		DEBUG_MSG("ERROR: SPI BURST READ FAILURE\n");
